@@ -482,6 +482,17 @@ function ExcalidrawDialog({ modal, onClose }) {
     return appTheme === 'dark' ? 'dark' : 'light'
   })
 
+  // Sync dialog theme automatically if app theme changes
+  React.useEffect(() => {
+    if (typeof document === 'undefined') return undefined
+    const observer = new MutationObserver(() => {
+      const appTheme = document.documentElement.getAttribute('data-theme')
+      setDialogTheme(appTheme === 'dark' ? 'dark' : 'light')
+    })
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => observer.disconnect()
+  }, [])
+
   if (!modal) return null
 
   const title = modal.title || modal.label || (modal.url ? decodeURIComponent(modal.url.split('/').at(-1)) : 'Excalidraw Drawing')

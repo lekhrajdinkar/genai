@@ -23,12 +23,9 @@ const UI_OPTIONS = {
   },
 }
 
-function getInitialCanvasTheme(scene) {
-  if (scene?.appState?.theme === 'dark' || scene?.appState?.theme === 'light') {
-    return scene.appState.theme
-  }
-  const appTheme = typeof document !== 'undefined' ? document.documentElement.getAttribute('data-theme') : 'light'
-  return appTheme === 'dark' ? 'dark' : 'light'
+function getAppTheme() {
+  if (typeof document === 'undefined') return 'light'
+  return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'
 }
 
 function ExcalidrawThumbnail({ url, descriptor, label, onOpen }) {
@@ -37,17 +34,31 @@ function ExcalidrawThumbnail({ url, descriptor, label, onOpen }) {
   const [error, setError] = React.useState(false)
   const [excalidrawAPI, setExcalidrawAPI] = React.useState(null)
   const [zoomPercent, setZoomPercent] = React.useState(100)
-  const [theme, setTheme] = React.useState(() => getInitialCanvasTheme(excalidrawCache.get(url)))
+  const [theme, setTheme] = React.useState(() => getAppTheme())
 
   const title = label || descriptor?.title || (url ? url.split('/').at(-1) : 'Excalidraw Drawing')
   const fileName = url ? decodeURIComponent(url.split('/').at(-1) || '') : ''
 
-  // Sync initial theme if scene loaded asynchronously
+  // Sync theme automatically when the app theme (System / Light / Dark) changes
   React.useEffect(() => {
-    if (sceneData?.appState?.theme && (sceneData.appState.theme === 'dark' || sceneData.appState.theme === 'light')) {
-      setTheme(sceneData.appState.theme)
-    }
-  }, [sceneData])
+    if (typeof document === 'undefined') return undefined
+    const observer = new MutationObserver(() => {
+      const nextTheme = getAppTheme()
+      setTheme(nextTheme)
+      if (excalidrawAPI) {
+        try {
+          excalidrawAPI.updateScene({
+            appState: { theme: nextTheme },
+            commitToHistory: false,
+          })
+        } catch {
+          // ignore
+        }
+      }
+    })
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => observer.disconnect()
+  }, [excalidrawAPI])
 
   React.useEffect(() => {
     if (excalidrawCache.has(url)) {

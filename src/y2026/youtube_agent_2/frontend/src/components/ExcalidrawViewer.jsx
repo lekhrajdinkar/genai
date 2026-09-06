@@ -200,6 +200,11 @@ const UI_OPTIONS = {
   },
 }
 
+function getAppTheme() {
+  if (typeof document === 'undefined') return 'light'
+  return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'
+}
+
 export default function ExcalidrawViewer({ url, initialTheme, onFallback }) {
   const [status, setStatus] = React.useState('loading')
   const [mode, setMode] = React.useState('') // 'file' | 'shared'
@@ -208,8 +213,7 @@ export default function ExcalidrawViewer({ url, initialTheme, onFallback }) {
   const [excalidrawAPI, setExcalidrawAPI] = React.useState(null)
   const [theme, setTheme] = React.useState(() => {
     if (initialTheme === 'dark' || initialTheme === 'light') return initialTheme
-    const appTheme = typeof document !== 'undefined' ? document.documentElement.getAttribute('data-theme') : 'light'
-    return appTheme === 'dark' ? 'dark' : 'light'
+    return getAppTheme()
   })
 
   // ── Animation & Playback States ──
@@ -220,12 +224,43 @@ export default function ExcalidrawViewer({ url, initialTheme, onFallback }) {
   const [focusMode, setFocusMode] = React.useState(true) // spotlight mode
   const [autoPan, setAutoPan] = React.useState(false)
 
-  // Sync initial theme if scene loaded asynchronously
+  // Sync when initialTheme prop changes
   React.useEffect(() => {
-    if (sceneData?.appState?.theme && (sceneData.appState.theme === 'dark' || sceneData.appState.theme === 'light')) {
-      setTheme(sceneData.appState.theme)
+    if (initialTheme === 'dark' || initialTheme === 'light') {
+      setTheme(initialTheme)
+      if (excalidrawAPI) {
+        try {
+          excalidrawAPI.updateScene({
+            appState: { theme: initialTheme },
+            commitToHistory: false,
+          })
+        } catch {
+          // ignore
+        }
+      }
     }
-  }, [sceneData])
+  }, [initialTheme, excalidrawAPI])
+
+  // Sync theme automatically when app theme (System / Light / Dark) changes
+  React.useEffect(() => {
+    if (typeof document === 'undefined') return undefined
+    const observer = new MutationObserver(() => {
+      const nextTheme = getAppTheme()
+      setTheme(nextTheme)
+      if (excalidrawAPI) {
+        try {
+          excalidrawAPI.updateScene({
+            appState: { theme: nextTheme },
+            commitToHistory: false,
+          })
+        } catch {
+          // ignore
+        }
+      }
+    })
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => observer.disconnect()
+  }, [excalidrawAPI])
 
   React.useEffect(() => {
     let cancelled = false
