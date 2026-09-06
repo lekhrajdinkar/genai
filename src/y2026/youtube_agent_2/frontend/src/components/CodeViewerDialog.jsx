@@ -152,7 +152,7 @@ export default function CodeViewerDialog({ modal, onClose }) {
         className="code-dialog"
         role="dialog"
         aria-modal="true"
-        aria-label={`Source Code: ${title}`}
+        aria-label={`Source Code: ${activeFilename || 'Code Viewer'}`}
       >
         <header className="code-dialog-header">
           <div className="code-dialog-brand">
