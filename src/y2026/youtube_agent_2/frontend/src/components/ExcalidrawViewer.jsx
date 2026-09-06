@@ -200,12 +200,17 @@ const UI_OPTIONS = {
   },
 }
 
-export default function ExcalidrawViewer({ url, onFallback }) {
+export default function ExcalidrawViewer({ url, initialTheme, onFallback }) {
   const [status, setStatus] = React.useState('loading')
   const [mode, setMode] = React.useState('') // 'file' | 'shared'
   const [error, setError] = React.useState('')
   const [sceneData, setSceneData] = React.useState(null)
   const [excalidrawAPI, setExcalidrawAPI] = React.useState(null)
+  const [theme, setTheme] = React.useState(() => {
+    if (initialTheme === 'dark' || initialTheme === 'light') return initialTheme
+    const appTheme = typeof document !== 'undefined' ? document.documentElement.getAttribute('data-theme') : 'light'
+    return appTheme === 'dark' ? 'dark' : 'light'
+  })
 
   // ── Animation & Playback States ──
   const [isAnimating, setIsAnimating] = React.useState(false)
@@ -214,6 +219,13 @@ export default function ExcalidrawViewer({ url, onFallback }) {
   const [speed, setSpeed] = React.useState(1) // 0.5 | 1 | 1.5 | 2
   const [focusMode, setFocusMode] = React.useState(true) // spotlight mode
   const [autoPan, setAutoPan] = React.useState(false)
+
+  // Sync initial theme if scene loaded asynchronously
+  React.useEffect(() => {
+    if (sceneData?.appState?.theme && (sceneData.appState.theme === 'dark' || sceneData.appState.theme === 'light')) {
+      setTheme(sceneData.appState.theme)
+    }
+  }, [sceneData])
 
   React.useEffect(() => {
     let cancelled = false
@@ -262,6 +274,23 @@ export default function ExcalidrawViewer({ url, onFallback }) {
     }
   }, [status, url, onFallback])
 
+  const handleToggleTheme = React.useCallback(() => {
+    setTheme(prev => {
+      const next = prev === 'dark' ? 'light' : 'dark'
+      if (excalidrawAPI) {
+        try {
+          excalidrawAPI.updateScene({
+            appState: { theme: next },
+            commitToHistory: false,
+          })
+        } catch (err) {
+          console.warn('[ExcalidrawViewer] Theme toggle error:', err)
+        }
+      }
+      return next
+    })
+  }, [excalidrawAPI])
+
   const sanitizedInitialData = React.useMemo(() => {
     if (!sceneData) return null
     const validElements = Array.isArray(sceneData.elements)
@@ -273,7 +302,8 @@ export default function ExcalidrawViewer({ url, onFallback }) {
       appState: {
         viewModeEnabled: true,
         zenModeEnabled: false,
-        viewBackgroundColor: sceneData.appState?.viewBackgroundColor || '#ffffff',
+        theme: theme,
+        viewBackgroundColor: sceneData.appState?.viewBackgroundColor || (theme === 'dark' ? '#121212' : '#ffffff'),
         zoom: { value: 1 },
         scrollX: 0,
         scrollY: 0,
@@ -282,7 +312,7 @@ export default function ExcalidrawViewer({ url, onFallback }) {
       files: sceneData.files || {},
       scrollToContent: false,
     }
-  }, [sceneData])
+  }, [sceneData, theme])
 
   const safeScrollToContent = React.useCallback((targetElements, options = { fitToViewport: true, animate: false }) => {
     if (!excalidrawAPI) return
@@ -460,11 +490,12 @@ export default function ExcalidrawViewer({ url, onFallback }) {
   }
 
   return (
-    <div className="excalidraw-viewer-container">
+    <div className="excalidraw-viewer-container" data-canvas-theme={theme}>
       {sanitizedInitialData && (
         <Excalidraw
           excalidrawAPI={api => setExcalidrawAPI(api)}
           viewModeEnabled
+          theme={theme}
           UIOptions={UI_OPTIONS}
           initialData={sanitizedInitialData}
         />
@@ -625,6 +656,33 @@ export default function ExcalidrawViewer({ url, onFallback }) {
                 </button>
               </>
             )}
+
+            {/* Quick Theme Toggle */}
+            <button
+              type="button"
+              className="excalidraw-anim-btn"
+              onClick={handleToggleTheme}
+              title={theme === 'dark' ? 'Switch drawing to Light theme (Shift+Alt+D)' : 'Switch drawing to Dark theme (Shift+Alt+D)'}
+              aria-label={theme === 'dark' ? 'Switch drawing to Light theme' : 'Switch drawing to Dark theme'}
+            >
+              {theme === 'dark' ? (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="5"/>
+                  <line x1="12" y1="1" x2="12" y2="3"/>
+                  <line x1="12" y1="21" x2="12" y2="23"/>
+                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                  <line x1="1" y1="12" x2="3" y2="12"/>
+                  <line x1="21" y1="12" x2="23" y2="12"/>
+                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+              )}
+            </button>
 
             {/* Fit Viewport Button */}
             <button

@@ -23,15 +23,31 @@ const UI_OPTIONS = {
   },
 }
 
+function getInitialCanvasTheme(scene) {
+  if (scene?.appState?.theme === 'dark' || scene?.appState?.theme === 'light') {
+    return scene.appState.theme
+  }
+  const appTheme = typeof document !== 'undefined' ? document.documentElement.getAttribute('data-theme') : 'light'
+  return appTheme === 'dark' ? 'dark' : 'light'
+}
+
 function ExcalidrawThumbnail({ url, descriptor, label, onOpen }) {
   const [sceneData, setSceneData] = React.useState(() => excalidrawCache.get(url) || null)
   const [loading, setLoading] = React.useState(() => !excalidrawCache.has(url))
   const [error, setError] = React.useState(false)
   const [excalidrawAPI, setExcalidrawAPI] = React.useState(null)
   const [zoomPercent, setZoomPercent] = React.useState(100)
+  const [theme, setTheme] = React.useState(() => getInitialCanvasTheme(excalidrawCache.get(url)))
 
   const title = label || descriptor?.title || (url ? url.split('/').at(-1) : 'Excalidraw Drawing')
   const fileName = url ? decodeURIComponent(url.split('/').at(-1) || '') : ''
+
+  // Sync initial theme if scene loaded asynchronously
+  React.useEffect(() => {
+    if (sceneData?.appState?.theme && (sceneData.appState.theme === 'dark' || sceneData.appState.theme === 'light')) {
+      setTheme(sceneData.appState.theme)
+    }
+  }, [sceneData])
 
   React.useEffect(() => {
     if (excalidrawCache.has(url)) {
@@ -138,6 +154,24 @@ function ExcalidrawThumbnail({ url, descriptor, label, onOpen }) {
     }, 150)
   }, [excalidrawAPI, safeScrollToContent])
 
+  const handleToggleTheme = React.useCallback((e) => {
+    e?.stopPropagation?.()
+    setTheme(prev => {
+      const next = prev === 'dark' ? 'light' : 'dark'
+      if (excalidrawAPI) {
+        try {
+          excalidrawAPI.updateScene({
+            appState: { theme: next },
+            commitToHistory: false,
+          })
+        } catch (err) {
+          console.warn('[ExcalidrawThumbnail] Theme toggle error:', err)
+        }
+      }
+      return next
+    })
+  }, [excalidrawAPI])
+
   const initialData = React.useMemo(() => {
     if (!sceneData) return null
     const validElements = Array.isArray(sceneData.elements)
@@ -149,7 +183,8 @@ function ExcalidrawThumbnail({ url, descriptor, label, onOpen }) {
       appState: {
         viewModeEnabled: true,
         zenModeEnabled: false,
-        viewBackgroundColor: sceneData.appState?.viewBackgroundColor || '#ffffff',
+        theme: theme,
+        viewBackgroundColor: sceneData.appState?.viewBackgroundColor || (theme === 'dark' ? '#121212' : '#ffffff'),
         zoom: { value: 1 },
         scrollX: 0,
         scrollY: 0,
@@ -158,7 +193,7 @@ function ExcalidrawThumbnail({ url, descriptor, label, onOpen }) {
       files: sceneData.files || {},
       scrollToContent: false,
     }
-  }, [sceneData])
+  }, [sceneData, theme])
 
   const elementCount = (sceneData?.elements || []).filter(el => !el.isDeleted).length
 
@@ -178,7 +213,11 @@ function ExcalidrawThumbnail({ url, descriptor, label, onOpen }) {
   }
 
   return (
-    <div className="notes-excalidraw-thumbnail-card" aria-label={`Excalidraw drawing: ${title}`}>
+    <div
+      className="notes-excalidraw-thumbnail-card"
+      data-canvas-theme={theme}
+      aria-label={`Excalidraw drawing: ${title}`}
+    >
       <div className="notes-excalidraw-thumbnail-header">
         <div className="notes-excalidraw-thumbnail-title-group">
           <span className="notes-excalidraw-logo-badge" aria-hidden="true">
@@ -232,6 +271,33 @@ function ExcalidrawThumbnail({ url, descriptor, label, onOpen }) {
             </button>
           </div>
 
+          {/* Quick Theme Toggle on Thumbnail */}
+          <button
+            type="button"
+            className={`notes-excalidraw-theme-toggle-btn ${theme === 'dark' ? 'is-dark' : 'is-light'}`}
+            onClick={handleToggleTheme}
+            title={theme === 'dark' ? 'Switch drawing to Light theme (Shift+Alt+D)' : 'Switch drawing to Dark theme (Shift+Alt+D)'}
+            aria-label={theme === 'dark' ? 'Switch drawing to Light theme' : 'Switch drawing to Dark theme'}
+          >
+            {theme === 'dark' ? (
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="5"/>
+                <line x1="12" y1="1" x2="12" y2="3"/>
+                <line x1="12" y1="21" x2="12" y2="23"/>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                <line x1="1" y1="12" x2="3" y2="12"/>
+                <line x1="21" y1="12" x2="23" y2="12"/>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+              </svg>
+            )}
+          </button>
+
           <button
             type="button"
             className="notes-excalidraw-expand-icon-btn"
@@ -246,7 +312,7 @@ function ExcalidrawThumbnail({ url, descriptor, label, onOpen }) {
         </div>
       </div>
 
-      <div className="notes-excalidraw-thumbnail-stage">
+      <div className="notes-excalidraw-thumbnail-stage" data-canvas-theme={theme}>
         {loading || !initialData ? (
           <div className="notes-excalidraw-thumbnail-loading">
             <span className="spinner" />
@@ -259,6 +325,7 @@ function ExcalidrawThumbnail({ url, descriptor, label, onOpen }) {
               onPointerUpdate={handlePointerUpdate}
               viewModeEnabled
               zenModeEnabled
+              theme={theme}
               UIOptions={UI_OPTIONS}
               initialData={initialData}
             />
